@@ -20,23 +20,39 @@ import os
 from collections import defaultdict
 from aqt.qt import *
 from anki.hooks import addHook
-
+from random import shuffle
+from datetime import date, datetime
 
 def myLinkHandler(reviewer, url):
     global character_translations_cache
+    day_zero = int(mw.col.crt / (24*3600))
     if url.startswith("ICRP"):
+        # fail any card for the character
         character = url[4:]
         ids = mw.col.findCards("hanzi:{}".format(character))
         if len(ids) > 0:
             tooltip(character)
             for id in ids:
                 card = mw.col.getCard(id)
-                # mw.col.sched.answerCard(card, 1)
+                card.due = int(datetime.now().timestamp() / (24*3600)) - day_zero
+                card.flush()        
                 note = card.note()
                 translations = note["translations"] # print(note["components"])            
                 character_translations_cache = translations + character_translations_cache
                 element = "document.getElementById(\"cache\")"
-                mw.web.eval("{}.innerHTML = {};".format(element, json.dumps(character_translations_cache)))
+                jsondump = json.dumps(character_translations_cache)
+                mw.web.eval("{}.innerHTML = {};".format(element, jsondump))
+
+        # reschedule up to n random sentences with the character to be due today
+        ids = mw.col.findCards("Sentence:*{}* -is:suspended -is:new".format(character))
+        if len(ids) > 0:
+            shuffle(ids)
+            if len(ids) > 7: # TODO: customize number
+                ids = ids[:7]
+            for id in ids:
+                card = mw.col.getCard(id)
+                card.due = int(datetime.now().timestamp() / (24*3600)) - day_zero
+                card.flush()        
     else:
         origLinkHandler(reviewer, url)
 
@@ -170,8 +186,9 @@ character_translations_cache = ""
 origLinkHandler = Reviewer._linkHandler
 Reviewer._linkHandler = myLinkHandler
 
-origShowQuestion = Reviewer._showQuestion
-Reviewer._showQuestion = myShowQuestion
+# origShowQuestion = Reviewer._showQuestion
+# Reviewer._showQuestion = myShowQuestion
+Reviewer._showQuestion = wrap(Reviewer._showQuestion, clear_cache, "before")
 
 Reviewer._answerCard = wrap(Reviewer._answerCard, clear_cache, "before")
 Reviewer._showAnswer = wrap(Reviewer._showAnswer, load_cache)
