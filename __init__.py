@@ -19,18 +19,25 @@ import json
 import os
 from collections import defaultdict
 from aqt.qt import *
+from anki.hooks import addHook
+
 
 def myLinkHandler(reviewer, url):
     if url.startswith("ICRP"):
         character = url[4:]
-        tooltip(character)
-        id = mw.col.findCards("hanzi:{}".format(character))[0]
-        card = mw.col.getCard(id)
-        # mw.col.sched.answerCard(card, 1)
-        note = card.note()
-        translations = note["translations"] # print(note["components"])            
-        element = "document.getElementById(\"ICRP_components\")"
-        mw.web.eval("{}.innerHTML = {};".format(element, json.dumps(translations)))
+        ids = mw.col.findCards("hanzi:{}".format(character))
+        if len(ids) > 0:
+            tooltip(character)
+            for id in ids:
+                card = mw.col.getCard(id)
+                # mw.col.sched.answerCard(card, 1)
+                note = card.note()
+                translations = note["translations"] # print(note["components"])            
+                this_note = reviewer.card.note()
+                this_note["Cache"] = translations + "\n" + this_note["Cache"]
+                this_note.flush()
+                element = "document.getElementById(\"cache\")"
+                mw.web.eval("{}.innerHTML = {};".format(element, json.dumps(this_note["Cache"])))
     else:
         origLinkHandler(reviewer, url)
 
@@ -132,20 +139,43 @@ def update_ICRP_sentences():
                 color_class = " color{}".format(color[0])
             else:
                 color_class = ""
-            onclick = "pycmd(\'ICRP{}\');".format(character)
-            sentence_with_pinyin += "<div class=\"hanzi_with_pinyin{}\" onclick=\"{}\">".format(ktag, onclick)
+            sentence_with_pinyin += "<div class=\"hanzi_with_pinyin{}\">".format(ktag)
             sentence_with_pinyin += "<div class=\"hanzi{}\">{}</div>".format(color_class, character)
             uniqe_pinyins = sorted(list(set([ x.lower() for x in pinyins ])))
             pinyin_divs = ("").join([ "<div class=\"pinyin_div color{}\">{}</div>".format(x[-1], x) for x in uniqe_pinyins ])
             sentence_with_pinyin += "<div class=\"pinyins_div\">{}</div></div>\n".format(pinyin_divs)
         note["Sentence with pinyin"] = sentence_with_pinyin
         note.flush()
-    
+
     tooltip("Update complete!")
     return
+
+def myShowQuestion(reviewer):
+    note = reviewer.card.note()    
+    note["Cache"] = ""
+    note.flush()
+    print("cleared cache in myShowQuestion")
+    origShowQuestion(reviewer)
+    
+def clear_cache(reviewer, ease):
+    note = reviewer.card.note()    
+    note["Cache"] = ""
+    note.flush()
+    print("cleared cache in clear_cache")
+
+def load_cache(reviewer):
+    note = reviewer.card.note()    
+    element = "document.getElementById(\"cache\")"
+    mw.web.eval("{}.innerHTML = {};".format(element, json.dumps(note["Cache"])))
     
 origLinkHandler = Reviewer._linkHandler
 Reviewer._linkHandler = myLinkHandler
+
+origShowQuestion = Reviewer._showQuestion
+Reviewer._showQuestion = myShowQuestion
+
+Reviewer._answerCard = wrap(Reviewer._answerCard, clear_cache, "before")
+Reviewer._showAnswer = wrap(Reviewer._showAnswer, load_cache)
 
 update_ICRP_sentences_action = QAction("Update ICRP sentences", mw)
 update_ICRP_sentences_action.triggered.connect(update_ICRP_sentences)
