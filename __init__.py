@@ -23,6 +23,7 @@ from anki.hooks import addHook
 
 
 def myLinkHandler(reviewer, url):
+    global character_translations_cache
     if url.startswith("ICRP"):
         character = url[4:]
         ids = mw.col.findCards("hanzi:{}".format(character))
@@ -33,11 +34,9 @@ def myLinkHandler(reviewer, url):
                 # mw.col.sched.answerCard(card, 1)
                 note = card.note()
                 translations = note["translations"] # print(note["components"])            
-                this_note = reviewer.card.note()
-                this_note["Cache"] = translations + "\n" + this_note["Cache"]
-                this_note.flush()
+                character_translations_cache = translations + character_translations_cache
                 element = "document.getElementById(\"cache\")"
-                mw.web.eval("{}.innerHTML = {};".format(element, json.dumps(this_note["Cache"])))
+                mw.web.eval("{}.innerHTML = {};".format(element, json.dumps(character_translations_cache)))
     else:
         origLinkHandler(reviewer, url)
 
@@ -151,23 +150,23 @@ def update_ICRP_sentences():
     return
 
 def myShowQuestion(reviewer):
-    note = reviewer.card.note()    
-    note["Cache"] = ""
-    note.flush()
-    print("cleared cache in myShowQuestion")
+    global character_translations_cache
+    character_translations_cache = ""
+    # print("cleared cache in myShowQuestion")
     origShowQuestion(reviewer)
     
 def clear_cache(reviewer, ease):
-    note = reviewer.card.note()    
-    note["Cache"] = ""
-    note.flush()
-    print("cleared cache in clear_cache")
+    global character_translations_cache
+    character_translations_cache = ""
+    # print("cleared cache in clear_cache")
 
 def load_cache(reviewer):
-    note = reviewer.card.note()    
+    global character_translations_cache
     element = "document.getElementById(\"cache\")"
-    mw.web.eval("{}.innerHTML = {};".format(element, json.dumps(note["Cache"])))
-    
+    mw.web.eval("{}.innerHTML = {};".format(element, json.dumps(character_translations_cache)))
+
+character_translations_cache = ""
+
 origLinkHandler = Reviewer._linkHandler
 Reviewer._linkHandler = myLinkHandler
 
