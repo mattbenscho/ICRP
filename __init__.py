@@ -31,11 +31,14 @@ def myLinkHandler(reviewer, url):
         character = url[4:]
         ids = mw.col.findCards("hanzi:{}".format(character))
         if len(ids) > 0:
-            tooltip(character)
+            # tooltip(character)
             for id in ids:
                 card = mw.col.getCard(id)
                 card.due = int(datetime.now().timestamp() / (24*3600)) - day_zero
                 card.flush()        
+                message = "Rescheduled hanzi card for {}.".format(character)
+                tooltip(message)
+                print(message)
                 note = card.note()
                 translations = note["translations"] # print(note["components"])            
                 character_translations_cache = translations + character_translations_cache
@@ -43,16 +46,7 @@ def myLinkHandler(reviewer, url):
                 jsondump = json.dumps(character_translations_cache)
                 mw.web.eval("{}.innerHTML = {};".format(element, jsondump))
 
-        # reschedule up to n random sentences with the character to be due today
-        ids = mw.col.findCards("Sentence:*{}* -is:suspended -is:new".format(character))
-        if len(ids) > 0:
-            shuffle(ids)
-            if len(ids) > 7: # TODO: customize number
-                ids = ids[:7]
-            for id in ids:
-                card = mw.col.getCard(id)
-                card.due = int(datetime.now().timestamp() / (24*3600)) - day_zero
-                card.flush()        
+        reschedule_sentences(reviewer, character = character)
     else:
         origLinkHandler(reviewer, url)
 
@@ -165,13 +159,7 @@ def update_ICRP_sentences():
     tooltip("Update complete!")
     return
 
-def myShowQuestion(reviewer):
-    global character_translations_cache
-    character_translations_cache = ""
-    # print("cleared cache in myShowQuestion")
-    origShowQuestion(reviewer)
-    
-def clear_cache(reviewer, ease):
+def clear_cache(reviewer, ease = None):
     global character_translations_cache
     character_translations_cache = ""
     # print("cleared cache in clear_cache")
@@ -181,16 +169,41 @@ def load_cache(reviewer):
     element = "document.getElementById(\"cache\")"
     mw.web.eval("{}.innerHTML = {};".format(element, json.dumps(character_translations_cache)))
 
+def reschedule_sentences(reviewer, ease = None, character = None):
+    # Reschedule up to n random sentences with the character to be due today.
+    # If there is no character passed in the function variables,
+    # we try to get one from the current card.
+    # In this case we also need to check the ease.
+    day_zero = int(mw.col.crt / (24*3600))
+    if not character:
+        note = mw.reviewer.card.note()
+        if "hanzi" in note.keys():
+            character = note["hanzi"]
+
+    if character and (ease == 1 or ease == None):
+        ids = mw.col.findCards("Sentence:*{}* -is:suspended -is:new".format(character))
+        if len(ids) > 0:
+            shuffle(ids)
+            due_date_in_days = int(datetime.now().timestamp() / (24*3600)) - day_zero
+            if len(ids) > 7: # TODO: customize number
+                ids = ids[:7]
+            for id in ids:
+                card = mw.col.getCard(id)
+                card.due = due_date_in_days
+                card.flush()
+            message = "Rescheduled {} sentences for {}.".format(len(ids), character)
+            tooltip(message)
+            print(message)
+    
+
 character_translations_cache = ""
 
 origLinkHandler = Reviewer._linkHandler
 Reviewer._linkHandler = myLinkHandler
 
-# origShowQuestion = Reviewer._showQuestion
-# Reviewer._showQuestion = myShowQuestion
 Reviewer._showQuestion = wrap(Reviewer._showQuestion, clear_cache, "before")
-
 Reviewer._answerCard = wrap(Reviewer._answerCard, clear_cache, "before")
+Reviewer._answerCard = wrap(Reviewer._answerCard, reschedule_sentences, "before")
 Reviewer._showAnswer = wrap(Reviewer._showAnswer, load_cache)
 
 update_ICRP_sentences_action = QAction("Update ICRP sentences", mw)
