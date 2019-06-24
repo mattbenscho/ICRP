@@ -6,7 +6,7 @@ Anki Add-on: Integrated Chinese Reading Practice
 Integrates your reading practice with your character reviews.
 
 TODO:
-- Move hardcoded strings to settings
+- Move hardcoded strings/values to settings
 
 Copyright: (c) 2019 Matthias B. Schönborn <mattbenscho@gmail.com>
 """
@@ -22,8 +22,9 @@ from aqt.qt import *
 from anki.hooks import addHook
 from random import shuffle
 from datetime import date, datetime
+import math # for math.ceil
 
-def myLinkHandler(reviewer, url):
+def ICRP_LinkHandler(reviewer, url):
     global character_translations_cache
     day_zero = int(mw.col.crt / (24*3600))
     if url.startswith("ICRP"):
@@ -34,17 +35,21 @@ def myLinkHandler(reviewer, url):
             # tooltip(character)
             for id in ids:
                 card = mw.col.getCard(id)
-                card.due = int(datetime.now().timestamp() / (24*3600)) - day_zero
-                card.flush()        
-                message = "Rescheduled hanzi card for {}.".format(character)
-                tooltip(message)
-                print(message)
-                note = card.note()
-                translations = note["translations"] # print(note["components"])            
-                character_translations_cache = translations + character_translations_cache
-                element = "document.getElementById(\"cache\")"
-                jsondump = json.dumps(character_translations_cache)
-                mw.web.eval("{}.innerHTML = {};".format(element, jsondump))
+                if card.type == 2:
+                    oldivl = card.ivl
+                    newivl = math.ceil(0.1 * oldivl)
+                    card.ivl = newivl
+                    card.due = int(datetime.now().timestamp() / (24*3600)) - day_zero
+                    card.flush()        
+                    message = "Rescheduled hanzi card for {}. Old ivl was {}, new ivl is {}.".format(character, oldivl, newivl)
+                    tooltip(message)
+                    print(message)
+                    note = card.note()
+                    translations = note["translations"] # print(note["components"])            
+                    character_translations_cache = translations + character_translations_cache
+                    element = "document.getElementById(\"cache\")"
+                    jsondump = json.dumps(character_translations_cache)
+                    mw.web.eval("{}.innerHTML = {};".format(element, jsondump))
 
         reschedule_sentences(reviewer, character = character)
     else:
@@ -71,6 +76,35 @@ def read_cedict():
         # print([traditional, simplified, pinyin, translations])
 
     return list_dict
+
+def update_character_notes():
+    tooltip("Updating Chinese character notes to add examples... ")
+    ids = mw.col.findCards("note:Hanzi")
+    for id in ids:
+        card = mw.col.getCard(id)
+        note = card.note()
+        hanzi = note["hanzi"]
+        print(hanzi)
+        examples = ""
+        sentence_ids = mw.col.findCards("note:Sentence Sentence:\"*{}*\"".format(hanzi))
+        if len(sentence_ids) > 0:
+            shuffle(sentence_ids)
+        if len(sentence_ids) > 7:
+            sentence_ids = sentence_ids[0:7]
+            
+        for sentence_id in sentence_ids:
+            sentence_card = mw.col.getCard(sentence_id)
+            # print(sentence_card.note()["Sentence"])
+            example = sentence_card.note()["Sentence with pinyin"]
+            example = example.replace(hanzi, "<span class=\"highlight\">{}</span>".format(hanzi))
+            examples += "<div class=\"example_sentence\">"
+            examples += "<div class=\"example_zh\">{}</div>".format(example)
+            examples += "<div class=\"example_en\">{}</div>".format(sentence_card.note()["Translation"])
+            examples += "</div>"
+
+        note["examples"] = examples
+        note.flush()
+            
 
 def update_ICRP_sentences():
     tooltip("Updating ICRP sentences... ")
@@ -189,8 +223,13 @@ def reschedule_sentences(reviewer, ease = None, character = None):
                 ids = ids[:7]
             for id in ids:
                 card = mw.col.getCard(id)
-                card.due = due_date_in_days
-                card.flush()
+                if card.type == 2:
+                    oldivl = card.ivl
+                    card.due = due_date_in_days
+                    newivl = math.ceil(0.1 * oldivl)
+                    card.ivl = newivl
+                    print("Old ivl was {}, new ivl is {}.".format(oldivl, newivl))
+                    card.flush()
             message = "Rescheduled {} sentences for {}.".format(len(ids), character)
             tooltip(message)
             print(message)
@@ -199,7 +238,7 @@ def reschedule_sentences(reviewer, ease = None, character = None):
 character_translations_cache = ""
 
 origLinkHandler = Reviewer._linkHandler
-Reviewer._linkHandler = myLinkHandler
+Reviewer._linkHandler = ICRP_LinkHandler
 
 Reviewer._showQuestion = wrap(Reviewer._showQuestion, clear_cache, "before")
 Reviewer._answerCard = wrap(Reviewer._answerCard, clear_cache, "before")
@@ -210,3 +249,6 @@ update_ICRP_sentences_action = QAction("Update ICRP sentences", mw)
 update_ICRP_sentences_action.triggered.connect(update_ICRP_sentences)
 mw.form.menuTools.addAction(update_ICRP_sentences_action)
 
+update_character_notes_action = QAction("Update Chinese character notes", mw)
+update_character_notes_action.triggered.connect(update_character_notes)
+mw.form.menuTools.addAction(update_character_notes_action)
