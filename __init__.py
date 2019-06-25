@@ -91,6 +91,7 @@ def update_character_notes():
             shuffle(sentence_ids)
         if len(sentence_ids) > 7:
             sentence_ids = sentence_ids[0:7]
+            sentence_ids.sort()
             
         for sentence_id in sentence_ids:
             sentence_card = mw.col.getCard(sentence_id)
