@@ -20,9 +20,9 @@ import os
 from collections import defaultdict
 from aqt.qt import *
 from anki.hooks import addHook
-from random import shuffle
 from datetime import date, datetime
 import math # for math.ceil
+import random
 
 def ICRP_LinkHandler(reviewer, url):
     global character_translations_cache
@@ -86,13 +86,11 @@ def update_character_notes():
         hanzi = note["hanzi"]
         print(hanzi)
         examples = ""
-        sentence_ids = mw.col.findCards("note:Sentence Sentence:\"*{}*\"".format(hanzi))
-        if len(sentence_ids) > 0:
-            shuffle(sentence_ids)
+        sentence_ids = mw.col.findCards("note:Sentence Sentence:\"*{}*\" -is:suspended".format(hanzi))
         if len(sentence_ids) > 7:
-            sentence_ids = sentence_ids[0:7]
-            sentence_ids.sort()
-            
+            indices = random.sample(range(len(sentence_ids)), 7)
+            sentence_ids = [sentence_ids[i] for i in sorted(indices)]
+
         for sentence_id in sentence_ids:
             sentence_card = mw.col.getCard(sentence_id)
             # print(sentence_card.note()["Sentence"])
@@ -106,6 +104,9 @@ def update_character_notes():
         note["examples"] = examples
         note.flush()
             
+    message = "Update complete!"
+    tooltip(message)
+    print(message)
 
 def update_ICRP_sentences():
     tooltip("Updating ICRP sentences... ")
@@ -202,7 +203,7 @@ def clear_cache(reviewer, ease = None):
 def load_cache(reviewer):
     global character_translations_cache
     element = "document.getElementById(\"cache\")"
-    mw.web.eval("{}.innerHTML = {};".format(element, json.dumps(character_translations_cache)))
+    mw.web.eval("try {{ {}.innerHTML = {} }} catch(e) {{}};".format(element, json.dumps(character_translations_cache)))
 
 def reschedule_sentences(reviewer, ease = None, character = None):
     # Reschedule up to n random sentences with the character to be due today.
@@ -218,7 +219,7 @@ def reschedule_sentences(reviewer, ease = None, character = None):
     if character and (ease == 1 or ease == None):
         ids = mw.col.findCards("Sentence:*{}* -is:suspended -is:new".format(character))
         if len(ids) > 0:
-            shuffle(ids)
+            random.shuffle(ids)
             due_date_in_days = int(datetime.now().timestamp() / (24*3600)) - day_zero
             if len(ids) > 7: # TODO: customize number
                 ids = ids[:7]
