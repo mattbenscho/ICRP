@@ -221,20 +221,26 @@ def reschedule_sentences(reviewer, ease = None, character = None):
         if len(ids) > 0:
             random.shuffle(ids)
             due_date_in_days = int(datetime.now().timestamp() / (24*3600)) - day_zero
-            if len(ids) > 7: # TODO: customize number
-                ids = ids[:7]
-            for id in ids:
-                card = mw.col.getCard(id)
-                if card.type == 2:
-                    oldivl = card.ivl
-                    card.due = due_date_in_days
-                    newivl = math.ceil(0.1 * oldivl)
-                    card.ivl = newivl
-                    print("Old ivl was {}, new ivl is {}.".format(oldivl, newivl))
-                    card.flush()
-            message = "Rescheduled {} sentences for {}.".format(len(ids), character)
-            tooltip(message)
-            print(message)
+            current_id = mw.reviewer.card.note().id
+            if len(ids) == 1 and ids[0] == current_id:
+                message = "There are no other example sentences containing \"{}\".".format(character)
+                tooltip(message)
+                print(message)
+            else:
+                if len(ids) > 7: # TODO: customize number
+                    ids = ids[:7]
+                for id in ids:
+                    card = mw.col.getCard(id)
+                    if card.type == 2 and not id == current_id:
+                        oldivl = card.ivl
+                        card.due = due_date_in_days
+                        newivl = math.ceil(0.1 * oldivl)
+                        card.ivl = newivl
+                        print("Old ivl was {}, new ivl is {}.".format(oldivl, newivl))
+                        card.flush()
+                message = "Rescheduled {} sentences for {}.".format(len(ids), character)
+                tooltip(message)
+                print(message)
     
 
 character_translations_cache = ""
