@@ -33,8 +33,8 @@ def ICRP_LinkHandler(reviewer, url):
         ids = mw.col.findCards("hanzi:{}".format(character))
         if len(ids) > 0:
             # tooltip(character)
-            for id in ids:
-                card = mw.col.getCard(id)
+            for card_id in ids:
+                card = mw.col.getCard(card_id)
                 if card.type == 2:
                     oldivl = card.ivl
                     newivl = math.ceil(0.1 * oldivl)
@@ -80,8 +80,8 @@ def read_cedict():
 def update_character_notes():
     tooltip("Updating Chinese character notes to add examples... ")
     ids = mw.col.findCards("note:Hanzi")
-    for id in ids:
-        card = mw.col.getCard(id)
+    for card_id in ids:
+        card = mw.col.getCard(card_id)
         note = card.note()
         hanzi = note["hanzi"]
         print(hanzi)
@@ -116,24 +116,24 @@ def update_ICRP_sentences():
     # get all seen Chinese characters:
     ids = mw.col.findCards("note:Hanzi -is:suspended -is:new")
     known_hanzis = []
-    for id in ids:
-        hanzi = mw.col.getCard(id).note()["hanzi"]
+    for card_id in ids:
+        hanzi = mw.col.getCard(card_id).note()["hanzi"]
         known_hanzis.append(hanzi)
     # print(known_hanzis)
 
     # get all seen Chinese words:
     ids = mw.col.findCards("note:Word -is:suspended -is:new")
     known_words = []
-    for id in ids:
-        word = mw.col.getCard(id).note()["hanzis"]
+    for card_id in ids:
+        word = mw.col.getCard(card_id).note()["hanzis"]
         known_words.append(word)
     # print(known_words)
 
     # iterate over the ICRP sentences:
     ids = mw.col.findCards("note:Sentence")
-    for id in ids:
+    for card_id in ids:
         table = "<table>\n"
-        card = mw.col.getCard(id)
+        card = mw.col.getCard(card_id)
         note = card.note()
 
         # assigning vocabulary:
@@ -221,7 +221,7 @@ def reschedule_sentences(reviewer, ease = None, character = None):
         if len(ids) > 0:
             random.shuffle(ids)
             due_date_in_days = int(datetime.now().timestamp() / (24*3600)) - day_zero
-            current_id = mw.reviewer.card.note().id
+            current_id = mw.reviewer.card.id
             if len(ids) == 1 and ids[0] == current_id:
                 message = "There are no other example sentences containing \"{}\".".format(character)
                 tooltip(message)
@@ -229,9 +229,9 @@ def reschedule_sentences(reviewer, ease = None, character = None):
             else:
                 if len(ids) > 7: # TODO: customize number
                     ids = ids[:7]
-                for id in ids:
-                    card = mw.col.getCard(id)
-                    if card.type == 2 and not id == current_id:
+                for card_id in ids:
+                    card = mw.col.getCard(card_id)
+                    if card.type == 2 and not card_id == current_id:
                         oldivl = card.ivl
                         card.due = due_date_in_days
                         newivl = math.ceil(0.1 * oldivl)
