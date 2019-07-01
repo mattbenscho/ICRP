@@ -229,6 +229,10 @@ def reschedule_sentences(reviewer, ease = None, character = None):
             else:
                 if len(ids) > 7: # TODO: customize number
                     ids = ids[:7]
+                if current_id in ids:
+                    rescheduled_count = len(ids) - 1
+                else:
+                    rescheduled_count = len(ids)
                 for card_id in ids:
                     card = mw.col.getCard(card_id)
                     if card.type == 2 and not card_id == current_id:
@@ -238,7 +242,7 @@ def reschedule_sentences(reviewer, ease = None, character = None):
                         card.ivl = newivl
                         print("Old ivl was {}, new ivl is {}.".format(oldivl, newivl))
                         card.flush()
-                message = "Rescheduled {} sentences for {}.".format(len(ids), character)
+                message = "Rescheduled {} sentences for {}.".format(rescheduled_count, character)
                 tooltip(message)
                 print(message)
     
