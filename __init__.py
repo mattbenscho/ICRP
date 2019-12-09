@@ -23,8 +23,13 @@ from anki.hooks import addHook
 from datetime import date, datetime
 import math # for math.ceil
 import random
+from anki.lang import _
+import sys # for recursionlimit
+
+sys.setrecursionlimit(100000)
 
 def ICRP_LinkHandler(reviewer, url):
+    global log_message
     global character_translations_cache
     day_zero = int(mw.col.crt / (24*3600))
     if url.startswith("ICRP"):
@@ -42,8 +47,8 @@ def ICRP_LinkHandler(reviewer, url):
                     card.due = int(datetime.now().timestamp() / (24*3600)) - day_zero
                     card.flush()        
                     message = "Rescheduled hanzi card for {}. Old ivl was {}, new ivl is {}.".format(character, oldivl, newivl)
-                    tooltip(message)
                     print(message)
+                    log_message += message + "\n"
                     note = card.note()
                     translations = note["translations"] # print(note["components"])            
                     character_translations_cache = translations + character_translations_cache
@@ -78,6 +83,7 @@ def read_cedict():
     return list_dict
 
 def update_character_notes():
+    global log_message
     tooltip("Updating Chinese character notes to add examples... ")
     ids = mw.col.findCards("note:Hanzi")
     for card_id in ids:
@@ -105,10 +111,11 @@ def update_character_notes():
         note.flush()
             
     message = "Update complete!"
-    tooltip(message)
     print(message)
+    log_message += message + "\n"
 
 def update_ICRP_sentences():
+    global log_message
     tooltip("Updating ICRP sentences... ")
     chinese_dictionary = read_cedict()
     cedict_keys = list(chinese_dictionary.keys())
@@ -205,12 +212,21 @@ def load_cache(reviewer):
     element = "document.getElementById(\"cache\")"
     mw.web.eval("try {{ {}.innerHTML = {} }} catch(e) {{}};".format(element, json.dumps(character_translations_cache)))
 
+def print_log_message(reviewer, ease = None):
+    global log_message
+    if len(log_message) > 0:
+        tooltip(log_message)
+        log_message = ""
+
 def reschedule_sentences(reviewer, ease = None, character = None):
     # Reschedule up to n random sentences with the character to be due today.
     # If there is no character passed in the function variables,
     # we try to get one from the current card.
     # In this case we also need to check the ease.
+
+    global log_message    
     day_zero = int(mw.col.crt / (24*3600))
+    
     if not character:
         note = mw.reviewer.card.note()
         if "hanzi" in note.keys():
@@ -224,8 +240,8 @@ def reschedule_sentences(reviewer, ease = None, character = None):
             current_id = mw.reviewer.card.id
             if len(ids) == 1 and ids[0] == current_id:
                 message = "There are no other example sentences containing \"{}\".".format(character)
-                tooltip(message)
                 print(message)
+                log_message += message + "\n"
             else:
                 if len(ids) > 7: # TODO: customize number
                     ids = ids[:7]
@@ -240,21 +256,109 @@ def reschedule_sentences(reviewer, ease = None, character = None):
                         card.due = due_date_in_days
                         newivl = math.ceil(0.1 * oldivl)
                         card.ivl = newivl
-                        print("Old ivl was {}, new ivl is {}.".format(oldivl, newivl))
+                        message = "Sentence: old ivl was {}, new ivl is {}.".format(oldivl, newivl)
+                        print(message)
+                        # log_message = message + "\n"
                         card.flush()
-                message = "Rescheduled {} sentences for {}.".format(rescheduled_count, character)
-                tooltip(message)
-                print(message)
-    
 
+                message = "Rescheduled {} sentences for {}.".format(rescheduled_count, character)
+                print(message)
+                log_message += message + "\n"
+                        
+def reschedule_elements_and_appearances(reviewer, ease = None):
+    global log_message
+    global due_characters
+    day_zero = int(mw.col.crt / (24*3600))
+    note = mw.reviewer.card.note()
+    if "hanzi" in note.keys() and "elements" in note.keys() and "appearances" in note.keys():
+        character = note["hanzi"]
+        elements = note["elements"]
+        appearances = note["appearances"]
+        hanzis = elements + appearances
+        due_characters = ""
+        # print(", ".join([character, elements, appearances, hanzis]))
+
+    rescheduled = ""
+    card = mw.reviewer.card
+    if character and hanzis and (ease == 1 or ease == None) and card.type != 0 and card.queue != 0:
+        searchstring = " or ".join([ "hanzi:"+i for i in hanzis ])
+        ids = mw.col.findCards("({}) -is:suspended -is:new deck:\"MandarinBanana Hanzis\"".format(searchstring))
+        if len(ids) > 0:            
+            due_date_in_days = int(datetime.now().timestamp() / (24*3600)) - day_zero
+            current_id = mw.reviewer.card.id
+            for card_id in ids:
+                card = mw.col.getCard(card_id)
+                if card.type == 2:
+                    oldivl = card.ivl
+                    card.due = due_date_in_days
+                    newivl = math.ceil(0.1 * oldivl)
+                    card.ivl = newivl
+                    note = card.note()
+                    rescheduled += note["hanzi"]
+                    message = "{}({}->{});".format(note["hanzi"], oldivl, newivl)
+                    print(message)
+                    # log_message += message + " \n"
+                    card.flush()
+
+            log_message += "Rescheduled {}; ".format(rescheduled)
+    
+def bury_due_to_component(reviewer, ease = None):
+    global log_message
+    global due_characters
+    global do_mw_reset
+    day_zero = int(mw.col.crt / (24*3600))
+    today_in_days = int(datetime.now().timestamp() / (24*3600)) - day_zero
+
+    # first we need to get the list with due characters if its empty:
+    if due_characters == "":
+        # print("Getting due characters... ")
+        due_cards = mw.col.findCards("deck:\"MandarinBanana Hanzis\" is:due -is:suspended -is:new")
+        for due_id in due_cards:
+            due_card = mw.col.getCard(due_id)
+            due_note = due_card.note()
+            due_characters += due_note["hanzi"]
+    
+    note = mw.reviewer.card.note()
+    if "hanzi" in note.keys() and "elements" in note.keys():
+        character = note["hanzi"]
+        elements = note["elements"]
+        for element in elements:
+            if element in due_characters:
+                # bury the current note, because one of its elements is due.
+                # Anki will pull out a new card after the mw.reset().
+                mw.checkpoint(_("Bury"))
+                mw.col.sched.buryNote(mw.reviewer.card.nid)
+                message = "Buried {} due to {}.".format(character, element)
+                print(message)
+                do_mw_reset = True
+                # print("do_mw_reset in bury_due_to_component = {}".format(do_mw_reset))
+                # mw.reset()
+                break
+
+def execute_mw_reset(reviewer, ease = None):
+    global do_mw_reset
+    # print("do_mw_reset in execute_mw_reset = {}".format(do_mw_reset))
+    if do_mw_reset == True:
+        # print("Executing a MW reset now!")
+        do_mw_reset = False
+        mw.reset()
+
+# Global variables
 character_translations_cache = ""
+log_message = ""
+due_characters = ""
+do_mw_reset = False
 
 origLinkHandler = Reviewer._linkHandler
 Reviewer._linkHandler = ICRP_LinkHandler
 
+Reviewer._showQuestion = wrap(Reviewer._showQuestion, execute_mw_reset, "after")
+Reviewer._showQuestion = wrap(Reviewer._showQuestion, bury_due_to_component, "before")
 Reviewer._showQuestion = wrap(Reviewer._showQuestion, clear_cache, "before")
 Reviewer._answerCard = wrap(Reviewer._answerCard, clear_cache, "before")
 Reviewer._answerCard = wrap(Reviewer._answerCard, reschedule_sentences, "before")
+Reviewer._answerCard = wrap(Reviewer._answerCard, reschedule_elements_and_appearances, "before")
+Reviewer._answerCard = wrap(Reviewer._answerCard, print_log_message, "after")
 Reviewer._showAnswer = wrap(Reviewer._showAnswer, load_cache)
 
 update_ICRP_sentences_action = QAction("Update ICRP sentences", mw)
