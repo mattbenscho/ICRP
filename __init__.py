@@ -26,7 +26,7 @@ import random
 from anki.lang import _
 import sys # for recursionlimit
 
-sys.setrecursionlimit(100000)
+sys.setrecursionlimit(1000000)
 
 def ICRP_LinkHandler(reviewer, url):
     global log_message
@@ -62,7 +62,7 @@ def ICRP_LinkHandler(reviewer, url):
 
 def read_cedict():
     addon_path = os.path.dirname(__file__)
-    with open(addon_path + "/cedict_1_0_ts_utf-8_mdbg.txt") as f:
+    with open(addon_path + "/cedict_ts.u8") as f:
         cedict_lines = f.readlines()
 
     cedict_lines = [x.strip() for x in cedict_lines]
@@ -104,7 +104,22 @@ def update_character_notes():
             example = example.replace(hanzi, "<span class=\"highlight\">{}</span>".format(hanzi))
             examples += "<div class=\"example_sentence\">"
             examples += "<div class=\"example_zh\">{}</div>".format(example)
-            examples += "<div class=\"example_en\">{}</div>".format(sentence_card.note()["Translation"])
+            translation = sentence_card.note()["Translation"]
+            if translation != "":
+                examples += "<div class=\"example_en\">{}</div>".format(translation)
+            video = sentence_card.note()["Video"]
+            image = sentence_card.note()["Image"]
+            if video != "" and image != "":
+                examples += "<video controls poster=\"{}\">".format(image)
+                examples += "<source src=\"{}\" type=\"video/webm\">".format(video)
+                examples += "</video>"
+            elif video != "" and image == "":
+                examples += "<video controls>"
+                examples += "<source src=\"{}\" type=\"video/webm\">".format(video)
+                examples += "</video>"                
+            elif video == "" and image != "":
+                examples += "<div class=\"sentenceimage\"><img src=\"{}\"/></div>".format(image)
+                
             examples += "</div>"
 
         note["examples"] = examples
@@ -268,6 +283,7 @@ def reschedule_sentences(reviewer, ease = None, character = None):
 def reschedule_elements_and_appearances(reviewer, ease = None):
     global log_message
     global due_characters
+    global hanzi_cards_dict
     day_zero = int(mw.col.crt / (24*3600))
     note = mw.reviewer.card.note()
     if "hanzi" in note.keys() and "elements" in note.keys() and "appearances" in note.keys():
@@ -281,8 +297,10 @@ def reschedule_elements_and_appearances(reviewer, ease = None):
     rescheduled = ""
     card = mw.reviewer.card
     if character and hanzis and (ease == 1 or ease == None) and card.type != 0 and card.queue != 0:
-        searchstring = " or ".join([ "hanzi:"+i for i in hanzis ])
-        ids = mw.col.findCards("({}) -is:suspended -is:new deck:\"MandarinBanana Hanzis\"".format(searchstring))
+        # searchstring = " or ".join([ "hanzi:"+i for i in hanzis ])
+        # ids = mw.col.findCards("({}) -is:suspended -is:new deck:\"MandarinBanana Hanzis\"".format(searchstring))
+        dictkeys = hanzi_cards_dict.keys()
+        ids = [ hanzi_cards_dict[character]["id"] for character in hanzis if character in dictkeys ]
         if len(ids) > 0:            
             due_date_in_days = int(datetime.now().timestamp() / (24*3600)) - day_zero
             current_id = mw.reviewer.card.id
@@ -343,10 +361,29 @@ def execute_mw_reset(reviewer, ease = None):
         do_mw_reset = False
         mw.reset()
 
+def load_hanzi_cards(reviewer, ease = None):
+    global hanzi_cards_dict
+    if hanzi_cards_dict == {}:
+        ### Loading the hanzi cards into RAM ###
+        starttime = datetime.now()
+        hanzi_cards = mw.col.findCards("note:Hanzi *")
+        for card in hanzi_cards:
+            this_card = mw.col.getCard(card)
+            # print(this_card)
+            this_note = this_card.note()
+            hanzi_cards_dict[this_note["hanzi"]] = {"appearances": this_note["appearances"],
+                                                    "id": str(card), 
+                                                    "elements": this_note["elements"]}
+            # print("{} {}".format(this_note["hanzi"], hanzi_cards_dict[this_note["hanzi"]]))
+        print(datetime.now() - starttime)
+        # print(hanzi_cards_dict)
+
+
 # Global variables
 character_translations_cache = ""
 log_message = ""
 due_characters = ""
+hanzi_cards_dict = {}
 do_mw_reset = False
 
 origLinkHandler = Reviewer._linkHandler
@@ -355,6 +392,7 @@ Reviewer._linkHandler = ICRP_LinkHandler
 Reviewer._showQuestion = wrap(Reviewer._showQuestion, execute_mw_reset, "after")
 Reviewer._showQuestion = wrap(Reviewer._showQuestion, bury_due_to_component, "before")
 Reviewer._showQuestion = wrap(Reviewer._showQuestion, clear_cache, "before")
+Reviewer._showQuestion = wrap(Reviewer._showQuestion, load_hanzi_cards, "before")
 Reviewer._answerCard = wrap(Reviewer._answerCard, clear_cache, "before")
 Reviewer._answerCard = wrap(Reviewer._answerCard, reschedule_sentences, "before")
 Reviewer._answerCard = wrap(Reviewer._answerCard, reschedule_elements_and_appearances, "before")
@@ -368,3 +406,5 @@ mw.form.menuTools.addAction(update_ICRP_sentences_action)
 update_character_notes_action = QAction("Update Chinese character notes", mw)
 update_character_notes_action.triggered.connect(update_character_notes)
 mw.form.menuTools.addAction(update_character_notes_action)
+
+
